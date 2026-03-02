@@ -1,0 +1,6 @@
+flask>=3.0.0
+pandas>=2.0.0
+torch>=2.0.0
+ai4bharat-transliteration>=1.1.0
+werkzeug>=3.0.0
+gunicorn>=21.0.0

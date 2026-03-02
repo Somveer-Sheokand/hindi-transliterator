@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hindi Transliterator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600;700&family=Noto+Sans+Devanagari:wght@400;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+
+  <!-- Background decoration -->
+  <div class="bg-grid"></div>
+  <div class="bg-glow"></div>
+
+  <div class="container">
+
+    <!-- Header -->
+    <header class="header">
+      <div class="flag-stripe">
+        <span class="stripe saffron"></span>
+        <span class="stripe white"></span>
+        <span class="stripe green"></span>
+      </div>
+      <div class="devanagari-accent">हिन्दी</div>
+      <h1 class="title">Hindi Transliterator</h1>
+      <p class="subtitle">Convert English-romanized words to Hindi script at scale — upload a CSV and get results instantly.</p>
+    </header>
+
+    <!-- Card -->
+    <div class="card" id="mainCard">
+
+      <!-- Step 1: Drop zone -->
+      <div class="step" id="stepUpload">
+        <div class="step-label"><span class="step-num">01</span> Upload CSV File</div>
+
+        <div class="drop-zone" id="dropZone">
+          <div class="drop-icon">
+            <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M24 6v24M14 16l10-10 10 10" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M8 34v4a2 2 0 002 2h28a2 2 0 002-2v-4" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <p class="drop-main">Drag &amp; drop your CSV here</p>
+          <p class="drop-sub">or <label for="fileInput" class="browse-link">browse files</label></p>
+          <input type="file" id="fileInput" accept=".csv" hidden />
+          <div class="file-badge" id="fileBadge" hidden>
+            <svg viewBox="0 0 20 20" fill="none"><path d="M4 4h8l4 4v8H4V4z" stroke="currentColor" stroke-width="1.5"/><path d="M12 4v4h4" stroke="currentColor" stroke-width="1.5"/></svg>
+            <span id="fileNameDisplay"></span>
+            <button class="remove-file" id="removeFile" title="Remove">✕</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 2: Column name -->
+      <div class="step" id="stepColumn">
+        <div class="step-label"><span class="step-num">02</span> Select Column</div>
+        <div class="input-wrap">
+          <input
+            type="text"
+            id="columnInput"
+            class="text-input"
+            placeholder="e.g. name, city, product_name"
+            autocomplete="off"
+          />
+          <div class="input-hint">Enter the exact column header from your CSV to transliterate</div>
+        </div>
+      </div>
+
+      <!-- Submit -->
+      <button class="submit-btn" id="submitBtn" disabled>
+        <span class="btn-text">Transliterate →</span>
+        <span class="btn-loader" hidden>
+          <span class="spinner"></span> Processing…
+        </span>
+      </button>
+
+      <!-- Progress -->
+      <div class="progress-section" id="progressSection" hidden>
+        <div class="progress-label" id="progressLabel">Starting…</div>
+        <div class="progress-bar-track">
+          <div class="progress-bar-fill" id="progressFill" style="width:0%"></div>
+        </div>
+        <div class="progress-pct" id="progressPct">0%</div>
+      </div>
+
+      <!-- Error -->
+      <div class="error-box" id="errorBox" hidden>
+        <strong>⚠ Error:</strong> <span id="errorMsg"></span>
+      </div>
+
+    </div>
+
+    <footer class="footer">
+      Powered by <strong>AI4Bharat XlitEngine</strong> &middot; Built with Flask &amp; ❤
+    </footer>
+  </div>
+
+  <script>
+    // ─── State ───────────────────────────────────────────────────────────────
+    let selectedFile = null;
+    let pollTimer = null;
+
+    // ─── Elements ────────────────────────────────────────────────────────────
+    const dropZone     = document.getElementById("dropZone");
+    const fileInput    = document.getElementById("fileInput");
+    const fileBadge    = document.getElementById("fileBadge");
+    const fileNameDisp = document.getElementById("fileNameDisplay");
+    const removeFile   = document.getElementById("removeFile");
+    const columnInput  = document.getElementById("columnInput");
+    const submitBtn    = document.getElementById("submitBtn");
+    const btnText      = submitBtn.querySelector(".btn-text");
+    const btnLoader    = submitBtn.querySelector(".btn-loader");
+    const progressSec  = document.getElementById("progressSection");
+    const progressLbl  = document.getElementById("progressLabel");
+    const progressFill = document.getElementById("progressFill");
+    const progressPct  = document.getElementById("progressPct");
+    const errorBox     = document.getElementById("errorBox");
+    const errorMsg     = document.getElementById("errorMsg");
+
+    // ─── File selection ───────────────────────────────────────────────────────
+    function setFile(file) {
+      if (!file || !file.name.endsWith(".csv")) {
+        showError("Please select a valid .csv file.");
+        return;
+      }
+      selectedFile = file;
+      fileNameDisp.textContent = file.name;
+      fileBadge.hidden = false;
+      updateSubmit();
+      hideError();
+    }
+
+    function clearFile() {
+      selectedFile = null;
+      fileInput.value = "";
+      fileBadge.hidden = true;
+      updateSubmit();
+    }
+
+    fileInput.addEventListener("change", () => {
+      if (fileInput.files[0]) setFile(fileInput.files[0]);
+    });
+
+    removeFile.addEventListener("click", clearFile);
+
+    // Drag & drop
+    ["dragenter","dragover"].forEach(ev => {
+      dropZone.addEventListener(ev, e => { e.preventDefault(); dropZone.classList.add("drag-over"); });
+    });
+    ["dragleave","drop"].forEach(ev => {
+      dropZone.addEventListener(ev, e => { e.preventDefault(); dropZone.classList.remove("drag-over"); });
+    });
+    dropZone.addEventListener("drop", e => {
+      const file = e.dataTransfer.files[0];
+      if (file) setFile(file);
+    });
+
+    columnInput.addEventListener("input", updateSubmit);
+
+    function updateSubmit() {
+      submitBtn.disabled = !(selectedFile && columnInput.value.trim());
+    }
+
+    // ─── Submit ───────────────────────────────────────────────────────────────
+    submitBtn.addEventListener("click", async () => {
+      if (!selectedFile || !columnInput.value.trim()) return;
+
+      setLoading(true);
+      hideError();
+      showProgress("Uploading file…", 0, 0);
+
+      const formData = new FormData();
+      formData.append("file", selectedFile);
+      formData.append("column", columnInput.value.trim());
+
+      try {
+        const res = await fetch("/upload", { method: "POST", body: formData });
+        const data = await res.json();
+
+        if (!res.ok) {
+          throw new Error(data.error || "Upload failed.");
+        }
+
+        pollProgress(data.job_id);
+      } catch (err) {
+        setLoading(false);
+        progressSec.hidden = true;
+        showError(err.message);
+      }
+    });
+
+    // ─── Polling ──────────────────────────────────────────────────────────────
+    function pollProgress(jobId) {
+      pollTimer = setInterval(async () => {
+        try {
+          const res  = await fetch(`/status/${jobId}`);
+          const data = await res.json();
+
+          if (data.status === "running" || data.status === "queued") {
+            const pct = data.total > 0 ? Math.round((data.progress / data.total) * 100) : 0;
+            showProgress(`Transliterating… ${data.progress} / ${data.total} rows`, pct, data.total);
+          } else if (data.status === "done") {
+            clearInterval(pollTimer);
+            showProgress("Done! Downloading…", 100, 1);
+            setLoading(false);
+            triggerDownload(jobId);
+            resetForm();
+          } else if (data.status === "error") {
+            clearInterval(pollTimer);
+            setLoading(false);
+            progressSec.hidden = true;
+            showError(data.error || "An unknown error occurred.");
+          }
+        } catch {
+          clearInterval(pollTimer);
+          setLoading(false);
+          showError("Lost connection to server.");
+        }
+      }, 800);
+    }
+
+    // ─── UI helpers ───────────────────────────────────────────────────────────
+    function setLoading(on) {
+      submitBtn.disabled = on;
+      btnText.hidden  = on;
+      btnLoader.hidden = !on;
+    }
+
+    function showProgress(label, pct, total) {
+      progressSec.hidden = false;
+      progressLbl.textContent = label;
+      progressFill.style.width = pct + "%";
+      progressPct.textContent  = pct + "%";
+    }
+
+    function showError(msg) {
+      errorMsg.textContent = msg;
+      errorBox.hidden = false;
+    }
+
+    function hideError() {
+      errorBox.hidden = true;
+    }
+
+    function triggerDownload(jobId) {
+      const a = document.createElement("a");
+      a.href = `/download/${jobId}`;
+      a.download = "hindi_transliteration.csv";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+
+    function resetForm() {
+      setTimeout(() => {
+        clearFile();
+        columnInput.value = "";
+        progressSec.hidden = true;
+        updateSubmit();
+      }, 2000);
+    }
+  </script>
+</body>
+</html>
